@@ -3,10 +3,8 @@ import csv
 import copy
 import time
 import math
-
 import numpy as np
 import matplotlib.pyplot as plt
-
 import minisam
 
 
@@ -61,8 +59,6 @@ def odom_gps(gps_0, gps_1):
                     [0, 0, 1]])
 
     return se2
-
-
 
 
 def theta_deg2so2(theta):

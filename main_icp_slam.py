@@ -1,12 +1,5 @@
-import os
-import sys
-import csv
-import copy
-import time
-import random
 import argparse
 import numpy as np
-# from matplotlib.animation import FFMpegWriter
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from minisam import *
@@ -14,23 +7,22 @@ from utils.ScanContextManager import *
 from utils.PoseGraphManager import *
 from utils.UtilsMisc import *
 import utils.UtilsPointcloud as Ptutils
-import utils.ICP as ICP
-import utils.Asymm_ICP as Asym_ICP
+import utils.matching as Match
 
 np.set_printoptions(precision=4)
 
 # params
 parser = argparse.ArgumentParser(description='PyICP SLAM arguments')
 
-parser.add_argument('--num_icp_points', type=int, default=5000)  # 5000 is enough for real time
+parser.add_argument('--num_icp_points', type=int, default=500)  # 5000 is enough for real time
 
 parser.add_argument('--num_rings', type=int, default=20)  # same as the original paper
 parser.add_argument('--num_sectors', type=int, default=60)  # same as the original paper
 parser.add_argument('--num_candidates', type=int, default=10)  # must be int
-parser.add_argument('--try_gap_loop_detection', type=int, default=10)  # same as the original paper
+parser.add_argument('--try_gap_loop_detection', type=int, default=50)  # same as the original paper
 
 parser.add_argument('--loop_threshold', type=float,
-                    default=0.01)  # 0.11 is usually safe (for avoiding false loop closure)
+                    default=0.05)  # 0.11 is usually safe (for avoiding false loop closure)
 
 parser.add_argument('--data_base_dir', type=str,
                     default='./velodyne_points/data')
@@ -39,6 +31,8 @@ parser.add_argument('--sequence_idx', type=str, default='00')
 parser.add_argument('--save_gap', type=int, default=300)
 
 args = parser.parse_args()
+
+resolution = [0.001, 0.001, np.deg2rad(0.01)]
 
 # dataset
 # sequence_dir = os.path.join(args.data_base_dir, args.sequence_idx, 'velodyne')  # Original Code
@@ -71,14 +65,9 @@ SCM = ScanContextManager(shape=[args.num_rings, args.num_sectors],
 # for saving the results as a video
 fig_idx = 1
 fig = plt.figure(fig_idx)
-# writer = FFMpegWriter(fps=15)
-video_name = args.sequence_idx + "_" + str(args.num_icp_points) + ".mp4"
 num_frames_to_skip_to_show = 5
 num_frames_to_save = np.floor(num_frames / num_frames_to_skip_to_show)
-# with writer.saving(fig, video_name, num_frames_to_save):  # this video saving part is optional
 
-wtfcount = 0
-noo = 0
 icp_initial = None
 
 # @@@ MAIN @@@: data stream
@@ -99,30 +88,14 @@ for for_idx in tqdm(range(num_frames)):
         icp_initial = np.eye(3)
         continue
 
-    # # matching matrix size
-    # len_prev = np.shape(prev_scan_pts)[0]
-    # len_curr = np.shape(curr_scan_pts)[0]
-    #
-    # if len_prev != len_curr:
-    #     len_max = max(len_curr, len_prev)
-    #
-    #     mat_prev = np.zeros([len_max, 2])
-    #     mat_curr = np.zeros([len_max, 2])
-    #
-    #     mat_prev[0:len_prev, :] = prev_scan_pts
-    #     mat_curr[0:len_curr, :] = curr_scan_pts
-    # else:
-    mat_prev = prev_scan_pts
-    mat_curr = curr_scan_pts
-
     # calculate odometry
 
     # odom_transform, _, _, wtfcount = ICP.icp(mat_curr, mat_prev, wtfcount, init_pose=icp_initial, max_iterations=10)
-    odom_transform, wtfcount = Asym_ICP.get_odometry(mat_prev, mat_curr, icp_initial, wtfcount)
+    odom_transform = Match.matching(prev_scan_pts, curr_scan_pts, icp_initial, resolution)
 
     # update the current (moved) pose
     PGM.curr_se2 = np.matmul(PGM.curr_se2, odom_transform)
-    # icp_initial = odom_transform  # assumption: constant velocity model (for better next ICP converges)
+    # Initial: gps data
     if for_idx != num_frames - 1:
         icp_initial = odom_gps(gps[for_idx], gps[for_idx + 1])
 
@@ -144,26 +117,10 @@ for for_idx in tqdm(range(num_frames)):
             # 2-1/ add the loop factor
             loop_scan_pts = SCM.getPtcloud(loop_idx)
 
-            # matching matrix size
-            len_loop = np.shape(loop_scan_pts)[0]
-            len_curr = np.shape(curr_scan_pts)[0]
-
-            if len_loop != len_curr:
-                len_max = max(len_curr, len_loop)
-
-                mat_loop = np.zeros([len_max, 2])
-                mat_curr = np.zeros([len_max, 2])
-
-                mat_loop[0:len_loop, :] = loop_scan_pts
-                mat_curr[0:len_curr, :] = curr_scan_pts
-            else:
-                mat_loop = loop_scan_pts
-                mat_curr = curr_scan_pts
-
             # loop_transform, _, _ = ICP.icp(mat_curr, mat_loop, noo,
             #                                init_pose=theta_deg2se2(theta_deg), max_iterations=20)
             init_pose = theta_deg2se2(theta_deg)
-            loop_transform, noo = Asym_ICP.get_odometry(mat_prev, mat_curr, init_pose, noo)
+            loop_transform = Match.matching(loop_scan_pts, curr_scan_pts, init_pose, resolution)
 
             PGM.addLoopFactor(loop_transform, loop_idx)
 
@@ -177,6 +134,3 @@ for for_idx in tqdm(range(num_frames)):
     ResultSaver.saveUnoptimizedPoseGraphResult(PGM.curr_se2, PGM.curr_node_idx)
     if for_idx % num_frames_to_skip_to_show == 0:
         ResultSaver.vizCurrentTrajectory(fig_idx=fig_idx)
-        # writer.grab_frame()
-
-    print(wtfcount)

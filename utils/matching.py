@@ -1,7 +1,6 @@
 # fastmatch from 2D LaserSLAM
 
 import numpy as np
-from math import cos, sin
 from sklearn.neighbors import NearestNeighbors
 
 
@@ -20,54 +19,75 @@ def matching(curr_scan, prev_scan, initial, resolution):
 
     # dimension expansion
     m = 2
-    src = np.ones((m + 1, curr_scan.shape[0]))
-    dst = np.ones((m + 1, prev_scan.shape[0]))
+    src = np.zeros((m + 1, curr_scan.shape[0]))
+    dst = np.zeros((m + 1, prev_scan.shape[0]))
     src[:m, :] = np.copy(curr_scan.T)  # 3xN
     dst[:m, :] = np.copy(prev_scan.T)  # 3xN
 
     # Go down the hill
     maxIter = 50
-    maxDepth = 3
+    maxDepth = 5
     iter = 0
     depth = 0
+    neigh = NearestNeighbors(n_neighbors=1)
+    neigh.fit(dst.T)
+
+    initial_trans = initial @ src
+
+    initial_error = evaluate(neigh, initial_trans.T)
+    best_error = initial_error
+    best_T = initial
 
     while iter < maxIter and depth <= maxDepth:
         no_Change = True
 
         # Rotation
         for theta in [-dt, 0, dt]:
-            ct = cos(theta)
-            st = sin(theta)
-            S = np.array([[ct, -st], [st, ct]]) @  # N*2
+            T = np.eye(3)
+            ct = np.cos(theta)
+            st = np.sin(theta)
+            T[:2, :2] = np.array([[ct, -st], [st, ct]])  # 3x3
+
+            S = T @ src  # 3xN
 
             # Translation
             for tx in [-dx, 0, dx]:
-                Sx = np.around(S.T[0] + (tx - minX) * ipixel) + 1
+                Tx = np.eye(3)
+                Tx[0, 2] = tx
+                Sx = Tx @ S
                 for ty in [-dy, 0, dy]:
-                    Sy = np.around(S.T[1] + (ty - minY) * ipixel) + 1
+                    Ty = np.eye(3)
+                    Ty[1, 2] = ty
+                    Sy = Ty @ S
 
-                    i = np.where((1 < Sx) & (Sx < nCols) & (1 < Sy) & (Sy < nRows))
-                    idx = np.around([Sy[i] - 1, Sx[i] - 1]).astype(np.int)
-                    hits = (gridMap.metricMap[idx[0], idx[1]])
-                    score = hits.sum()
+                    error = evaluate(neigh, Sy.T)
 
                     # update
-                    if score < bestScore:
+                    if error < best_error:
                         no_Change = False
-                        bestPose = [tx, ty, theta]
-                        bestScore = score
-                        bestHits = hits
+                        best_T = T + np.array([[0, 0, tx], [0, 0, ty], [0, 0, 0]])
+                        best_error = error
 
         if no_Change:  # iteration 다 시도했는데 변화 없을 경우 -> resolution 높여서 다시 시도
-            r = r / 2
-            t = t / 2
+            dt /= 2
+            dx /= 2
+            dy /= 2
             depth += 1
 
-        # pose update, 반복
-        pose = bestPose
+        # iteration
         iter += 1
 
-    return bestPose, bestHits
+    return best_T
 
 
-def evaluate():
+def evaluate(neigh, source):
+    """
+    Calculates mean error between source points and target points
+    ** Error is a bit bigger if the number of target points is smaller
+    :param neigh: scikit learn NearestNeighbor object
+    :param source: source points, Nxm
+    :return: mean error
+    """
+    distances, _ = neigh.kneighbors(source, return_distance=True)
+    error = distances.ravel()
+    return np.mean(error)

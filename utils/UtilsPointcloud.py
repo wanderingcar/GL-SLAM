@@ -9,6 +9,7 @@ def read_symphony_scan_np(path):
 
     file_path = path + "/" + file_list[0]
     lidar = np.loadtxt(file_path, delimiter=',', dtype=np.float64)
+    print(file_list[0], "loaded")
 
     # len(file_list)
     for i in range(1, len(file_list)):
