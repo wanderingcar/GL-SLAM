@@ -27,6 +27,8 @@ def load_gps():
     tf_tf = tf % 206 != 0
     gps = full_table[tf_tf, 2:5]
 
+    print("gps loaded")
+
     return gps
 
 

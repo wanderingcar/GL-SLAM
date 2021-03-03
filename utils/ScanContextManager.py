@@ -20,6 +20,7 @@ def xy2theta(x, y):
 
 
 def pt2rs(point, gap_ring, gap_sector, num_ring, num_sector):
+    # point to ring and sector
     x = point[0]
     y = point[1]
 
@@ -40,18 +41,18 @@ def pt2rs(point, gap_ring, gap_sector, num_ring, num_sector):
     return int(idx_ring), int(idx_sector)
 
 
-def ptcloud2sc(ptcloud, sc_shape, max_length):  # ptcloud : mX2 np array, sc_shape = [20, 60], max_length = 80
-    num_ring = sc_shape[0]  # 20
-    num_sector = sc_shape[1]  # 60
+def ptcloud2sc(ptcloud, sc_shape, max_length):  # ptcloud : mX2 np array,
+    num_ring = sc_shape[0]
+    num_sector = sc_shape[1]
 
-    gap_ring = max_length / num_ring  # 4
-    gap_sector = 360 / num_sector  # 6
+    gap_ring = max_length / num_ring  # distance between each rings
+    gap_sector = 360 / num_sector  # degree between each sectors
 
     enough_large = 500
     sc_storage = np.zeros([enough_large, num_ring, num_sector])  # 500, 20, 60
     sc_counter = np.zeros([num_ring, num_sector])  # 20, 60
 
-    num_points = ptcloud.shape[0]  # m
+    num_points = ptcloud.shape[0]  # dimension of point cloud
     for pt_idx in range(num_points):
         point = ptcloud[pt_idx, :]
 
@@ -116,9 +117,9 @@ class ScanContextManager:
         self.num_candidates = num_candidates
         self.threshold = threshold
 
-        self.max_length = 80  # recommended but other (e.g., 100m) is also ok.
+        self.max_length = 20  # recommended but other (e.g., 100m) is also ok.
 
-        self.ENOUGH_LARGE = 40000  # capable of up to ENOUGH_LARGE number of nodes
+        self.ENOUGH_LARGE = 100000  # capable of up to ENOUGH_LARGE number of nodes
         self.ptclouds = [None] * self.ENOUGH_LARGE
         self.scancontexts = [None] * self.ENOUGH_LARGE
         self.ringkeys = [None] * self.ENOUGH_LARGE
